@@ -50,11 +50,9 @@ function AuthCallback() {
         }
       }
 
-      if (event === 'INITIAL_SESSION' && !session) {
-        // No session established — something went wrong
-        subscription.unsubscribe()
-        navigate({ to: '/auth/login' })
-      }
+      // Do NOT redirect on INITIAL_SESSION with no session — the OAuth code
+      // exchange is async and INITIAL_SESSION fires before it completes.
+      // The 8-second timeout below handles the genuine failure case.
     })
 
     // Safety net: if nothing fires in 8 seconds, bail to login
