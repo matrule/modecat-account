@@ -46,11 +46,27 @@ export function ProjectCard({ project, onOpen, onDelete }: ProjectCardProps) {
 
       {/* ── Body ── */}
       <div className="px-3 py-2.5" style={{ minHeight: 56 }}>
-        {project.bpm != null && (
-          <p style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: '#444', marginBottom: 6 }}>
-            {project.bpm} BPM
-          </p>
-        )}
+
+        {/* Stats row */}
+        <div className="mb-2 flex items-center gap-3">
+          {project.bpm != null && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#444' }}>
+              {project.bpm} BPM
+            </span>
+          )}
+          {project.block_count != null && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#444' }}>
+              {project.block_count} {project.block_count === 1 ? 'block' : 'blocks'}
+            </span>
+          )}
+          {project.file_size_bytes != null && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#aaa' }}>
+              {project.file_size_bytes < 1024 * 1024
+                ? `${(project.file_size_bytes / 1024).toFixed(1)} KB`
+                : `${(project.file_size_bytes / (1024 * 1024)).toFixed(2)} MB`}
+            </span>
+          )}
+        </div>
 
         {project.tags.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
@@ -65,7 +81,7 @@ export function ProjectCard({ project, onOpen, onDelete }: ProjectCardProps) {
           </div>
         )}
 
-        {project.bpm == null && project.tags.length === 0 && (
+        {project.bpm == null && project.block_count == null && project.tags.length === 0 && (
           <p style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#ccc' }}>No metadata</p>
         )}
       </div>

@@ -56,6 +56,8 @@ export interface SaveProjectOptions {
   bpm?: number
   /** Tags */
   tags?: string[]
+  /** Number of blocks in the project */
+  blockCount?: number
   /** The full tracker state to serialise and upload */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: Record<string, any>
@@ -219,7 +221,7 @@ const cloud = {
 
     notifyStatus('saving')
     try {
-      const { id, title, bpm, tags = [], data } = options
+      const { id, title, bpm, tags = [], blockCount, data } = options
       const filePath = `${user.id}/${id}.json`
 
       // 1. Upload the project JSON to storage
@@ -229,7 +231,7 @@ const cloud = {
         .upload(filePath, blob, { upsert: true, contentType: 'application/json' })
       if (uploadError) throw uploadError
 
-      // 2. Upsert the metadata row
+      // 2. Upsert the metadata row (including tracker-computed stats)
       const { data: row, error: dbError } = await sb
         .from('projects')
         .upsert({
@@ -239,6 +241,8 @@ const cloud = {
           bpm: bpm ?? null,
           tags,
           file_path: filePath,
+          block_count: blockCount ?? null,
+          file_size_bytes: blob.size,
           updated_at: new Date().toISOString(),
         })
         .select()

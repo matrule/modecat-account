@@ -14,6 +14,8 @@ export interface Project {
   bpm: number | null
   tags: string[]
   play_count: number
+  block_count: number | null
+  file_size_bytes: number | null
   forked_from: string | null
   schema_version: number
   created_at: string
