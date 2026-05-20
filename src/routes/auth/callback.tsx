@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { type Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 
 interface CallbackSearch {
@@ -20,8 +21,7 @@ function isSafeRedirect(url: string): boolean {
     const parsed = new URL(url)
     return SAFE_DOMAINS.some((d) => parsed.hostname === d || parsed.hostname.endsWith(`.${d}`))
   } catch {
-    // Relative path — safe
-    return true
+    return true // relative path — safe
   }
 }
 
@@ -33,36 +33,44 @@ function AuthCallback() {
     const destination =
       redirect_to && isSafeRedirect(redirect_to) ? redirect_to : '/dashboard/projects'
 
-    // Supabase exchanges the OAuth code / magic-link token asynchronously.
-    // Listening to onAuthStateChange ensures we act only after the session
-    // is fully established, regardless of timing.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        subscription.unsubscribe()
+    function doRedirect(session: Session) {
+      if (destination.startsWith('http')) {
+        const url = new URL(destination)
+        url.searchParams.set('mc_token', session.access_token)
+        window.location.href = url.toString()
+      } else {
+        navigate({ to: destination as '/' })
+      }
+    }
 
-        if (destination.startsWith('http')) {
-          // Cross-domain tracker flow — pass token back as query param
-          const url = new URL(destination)
-          url.searchParams.set('mc_token', session.access_token)
-          window.location.href = url.toString()
-        } else {
-          navigate({ to: destination as '/' })
-        }
+    let timeout: ReturnType<typeof setTimeout>
+
+    // Supabase may have already exchanged the OAuth code by the time this
+    // component mounts — check for an existing session first.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        // Session already ready — redirect immediately
+        doRedirect(session)
+        return
       }
 
-      // Do NOT redirect on INITIAL_SESSION with no session — the OAuth code
-      // exchange is async and INITIAL_SESSION fires before it completes.
-      // The 8-second timeout below handles the genuine failure case.
+      // Not ready yet — wait for SIGNED_IN (exchange still in progress)
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          subscription.unsubscribe()
+          clearTimeout(timeout)
+          doRedirect(session)
+        }
+      })
+
+      // Safety net: give up after 10s and send to login
+      timeout = setTimeout(() => {
+        subscription.unsubscribe()
+        navigate({ to: '/auth/login' })
+      }, 10000)
     })
 
-    // Safety net: if nothing fires in 8 seconds, bail to login
-    const timeout = setTimeout(() => {
-      subscription.unsubscribe()
-      navigate({ to: '/auth/login' })
-    }, 8000)
-
     return () => {
-      subscription.unsubscribe()
       clearTimeout(timeout)
     }
   }, [navigate, redirect_to])
