@@ -20,50 +20,70 @@ function isSafeRedirect(url: string): boolean {
     const parsed = new URL(url)
     return SAFE_DOMAINS.some((d) => parsed.hostname === d || parsed.hostname.endsWith(`.${d}`))
   } catch {
-    return true // relative path — safe
+    return true
   }
 }
 
 function AuthCallback() {
   const navigate = useNavigate()
   const { redirect_to } = Route.useSearch()
-  const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState('Signing you in…')
+  const [debugInfo, setDebugInfo] = useState('')
 
   useEffect(() => {
     const destination =
       redirect_to && isSafeRedirect(redirect_to) ? redirect_to : '/dashboard/projects'
 
     async function exchange() {
-      // Extract the PKCE code from the URL query string
-      const code = new URLSearchParams(window.location.search).get('code')
+      const search = new URLSearchParams(window.location.search)
+      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
 
+      // Debug: show what we actually have in the URL
+      const debugStr = `search: ${window.location.search || '(empty)'} | hash: ${window.location.hash || '(empty)'}`
+      setDebugInfo(debugStr)
+
+      // ── PKCE flow: code in query string ──
+      const code = search.get('code')
       if (code) {
-        // Explicit PKCE exchange — we control the timing, no race condition
         const { data, error } = await supabase.auth.exchangeCodeForSession(code)
         if (error || !data.session) {
-          setError(error?.message ?? 'Sign-in failed. Please try again.')
-          setTimeout(() => navigate({ to: '/auth/login' }), 2000)
+          setStatus(`Error: ${error?.message ?? 'exchange failed'}`)
           return
         }
-
-        if (destination.startsWith('http')) {
-          const url = new URL(destination)
-          url.searchParams.set('mc_token', data.session.access_token)
-          window.location.href = url.toString()
-        } else {
-          navigate({ to: destination as '/' })
-        }
+        doRedirect(data.session.access_token, destination)
         return
       }
 
-      // No code in URL — could be a magic link (hash-based) or stale redirect.
-      // Check if we already have a valid session.
+      // ── Implicit flow: tokens in hash ──
+      const accessToken = hash.get('access_token')
+      const refreshToken = hash.get('refresh_token')
+      if (accessToken && refreshToken) {
+        const { data, error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+        if (error || !data.session) {
+          setStatus(`Error: ${error?.message ?? 'session failed'}`)
+          return
+        }
+        doRedirect(data.session.access_token, destination)
+        return
+      }
+
+      // ── Fallback: maybe session already exists ──
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
-        navigate({ to: destination as '/' })
+        doRedirect(session.access_token, destination)
+        return
+      }
+
+      setStatus(`No auth code found — nothing in URL params or hash.`)
+    }
+
+    function doRedirect(accessToken: string, destination: string) {
+      if (destination.startsWith('http')) {
+        const url = new URL(destination)
+        url.searchParams.set('mc_token', accessToken)
+        window.location.href = url.toString()
       } else {
-        setError('No auth code found. Please try signing in again.')
-        setTimeout(() => navigate({ to: '/auth/login' }), 2000)
+        navigate({ to: destination as '/' })
       }
     }
 
@@ -71,7 +91,7 @@ function AuthCallback() {
   }, [navigate, redirect_to])
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-white">
+    <div className="flex min-h-screen items-center justify-center bg-white px-6">
       <div className="text-center">
         <span
           className="font-vt323 text-[28px] leading-none text-[#111]"
@@ -79,9 +99,18 @@ function AuthCallback() {
         >
           modecat_
         </span>
-        <p className="mt-4 font-mono text-[11px] text-[#aaa]">
-          {error ?? 'Signing you in…'}
-        </p>
+        <p className="mt-4 font-mono text-[11px] text-[#888]">{status}</p>
+        {debugInfo && (
+          <p className="mt-3 max-w-sm break-all font-mono text-[9px] text-[#bbb]">{debugInfo}</p>
+        )}
+        {status.startsWith('No auth') || status.startsWith('Error') ? (
+          <button
+            onClick={() => navigate({ to: '/auth/login' })}
+            className="mt-6 font-mono text-[10px] text-[#0055AA] underline"
+          >
+            Back to login
+          </button>
+        ) : null}
       </div>
     </div>
   )
