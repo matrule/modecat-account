@@ -3,7 +3,10 @@ import { AuthGuard } from '@/components/auth/AuthGuard'
 import { ProjectGrid } from '@/components/project/ProjectGrid'
 import { useAuth } from '@/hooks/useAuth'
 import { useProjects, useDeleteProject } from '@/hooks/useProjects'
+import { supabase } from '@/lib/supabase'
 import type { Project } from '@/types/project'
+
+const TRACKER_URL = 'https://modecat.net'
 
 export const Route = createFileRoute('/dashboard/projects/')({
   component: ProjectsPage,
@@ -57,10 +60,20 @@ function ProjectsPage() {
   const publicCount = projects?.filter((p) => p.is_public).length ?? 0
   const totalPlays = projects?.reduce((sum, p) => sum + (p.play_count ?? 0), 0) ?? 0
 
-  function handleOpen(project: Project) {
-    // Open the project in the tracker — passes a signed URL via the tracker's cloud.ts
-    // For now, navigate to the project detail page
-    navigate({ to: '/dashboard/projects/$projectId', params: { projectId: project.id } })
+  async function handleOpen(project: Project) {
+    // Get the current session tokens and open the tracker in a new tab.
+    // The tracker's cloud.init() picks up mc_token + mc_refresh to establish the session,
+    // and mc_project to know which project to load automatically.
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      navigate({ to: '/auth/login' })
+      return
+    }
+    const url = new URL(TRACKER_URL)
+    url.searchParams.set('mc_token', session.access_token)
+    url.searchParams.set('mc_refresh', session.refresh_token)
+    url.searchParams.set('mc_project', project.id)
+    window.open(url.toString(), '_blank', 'noopener')
   }
 
   function handleDelete(project: Project) {
