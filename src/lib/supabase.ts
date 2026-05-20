@@ -13,11 +13,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
-    // Persist session to localStorage so the user stays logged in across refreshes.
-    // Note: app.modecat.net and modecat.net are different origins and do NOT share
-    // localStorage — the cross-domain auth flow in auth/callback.tsx handles this.
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
+    // We handle the PKCE code exchange manually in /auth/callback so we can
+    // control timing. Disabling auto-detection avoids the race condition where
+    // Supabase starts the exchange in the background and our getSession() call
+    // loses the race against it.
+    detectSessionInUrl: false,
   },
 })

@@ -1,6 +1,5 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { type Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 
 interface CallbackSearch {
@@ -28,51 +27,47 @@ function isSafeRedirect(url: string): boolean {
 function AuthCallback() {
   const navigate = useNavigate()
   const { redirect_to } = Route.useSearch()
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const destination =
       redirect_to && isSafeRedirect(redirect_to) ? redirect_to : '/dashboard/projects'
 
-    function doRedirect(session: Session) {
-      if (destination.startsWith('http')) {
-        const url = new URL(destination)
-        url.searchParams.set('mc_token', session.access_token)
-        window.location.href = url.toString()
-      } else {
-        navigate({ to: destination as '/' })
-      }
-    }
+    async function exchange() {
+      // Extract the PKCE code from the URL query string
+      const code = new URLSearchParams(window.location.search).get('code')
 
-    let timeout: ReturnType<typeof setTimeout>
+      if (code) {
+        // Explicit PKCE exchange — we control the timing, no race condition
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+        if (error || !data.session) {
+          setError(error?.message ?? 'Sign-in failed. Please try again.')
+          setTimeout(() => navigate({ to: '/auth/login' }), 2000)
+          return
+        }
 
-    // Supabase may have already exchanged the OAuth code by the time this
-    // component mounts — check for an existing session first.
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        // Session already ready — redirect immediately
-        doRedirect(session)
+        if (destination.startsWith('http')) {
+          const url = new URL(destination)
+          url.searchParams.set('mc_token', data.session.access_token)
+          window.location.href = url.toString()
+        } else {
+          navigate({ to: destination as '/' })
+        }
         return
       }
 
-      // Not ready yet — wait for SIGNED_IN (exchange still in progress)
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        if (event === 'SIGNED_IN' && session) {
-          subscription.unsubscribe()
-          clearTimeout(timeout)
-          doRedirect(session)
-        }
-      })
-
-      // Safety net: give up after 10s and send to login
-      timeout = setTimeout(() => {
-        subscription.unsubscribe()
-        navigate({ to: '/auth/login' })
-      }, 10000)
-    })
-
-    return () => {
-      clearTimeout(timeout)
+      // No code in URL — could be a magic link (hash-based) or stale redirect.
+      // Check if we already have a valid session.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        navigate({ to: destination as '/' })
+      } else {
+        setError('No auth code found. Please try signing in again.')
+        setTimeout(() => navigate({ to: '/auth/login' }), 2000)
+      }
     }
+
+    exchange()
   }, [navigate, redirect_to])
 
   return (
@@ -84,7 +79,9 @@ function AuthCallback() {
         >
           modecat_
         </span>
-        <p className="mt-4 font-mono text-[11px] text-[#aaa]">Signing you in…</p>
+        <p className="mt-4 font-mono text-[11px] text-[#aaa]">
+          {error ?? 'Signing you in…'}
+        </p>
       </div>
     </div>
   )
