@@ -186,7 +186,7 @@ const cloud = {
    * Call `cloud.init()` on the next page load to pick them up.
    */
   connectAccount(options?: { accountPlatformUrl?: string }): void {
-    const platform = options?.accountPlatformUrl ?? 'https://modecat-account.netlify.app'
+    const platform = options?.accountPlatformUrl ?? 'https://account.modecat.net'
     const redirectTo = window.location.href
     window.location.href = `${platform}/auth/login?redirect_to=${encodeURIComponent(redirectTo)}`
   },

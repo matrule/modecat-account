@@ -13,7 +13,7 @@ export const Route = createFileRoute('/auth/callback')({
   component: AuthCallback,
 })
 
-const SAFE_DOMAINS = ['modecat-account.netlify.app', 'app.modecat.net', 'modecat.net', 'localhost']
+const SAFE_DOMAINS = ['account.modecat.net', 'modecat-account.netlify.app', 'modecat.net', 'localhost']
 
 function isSafeRedirect(url: string): boolean {
   try {
