@@ -13,63 +13,73 @@ export const Route = createFileRoute('/auth/callback')({
   component: AuthCallback,
 })
 
-/**
- * Handles:
- *  1. OAuth provider redirects (GitHub, Google) — Supabase exchanges the code automatically
- *  2. Magic link clicks — Supabase exchanges the token automatically
- *  3. Cross-domain login from modecat.net — passes a short-lived access token as a query param,
- *     which we use to set the session, then redirect back
- *
- * After any successful session exchange, we redirect to redirect_to (if safe) or /dashboard/projects.
- */
+const SAFE_DOMAINS = ['modecat-account.netlify.app', 'app.modecat.net', 'modecat.net', 'localhost']
+
+function isSafeRedirect(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return SAFE_DOMAINS.some((d) => parsed.hostname === d || parsed.hostname.endsWith(`.${d}`))
+  } catch {
+    // Relative path — safe
+    return true
+  }
+}
+
 function AuthCallback() {
   const navigate = useNavigate()
   const { redirect_to } = Route.useSearch()
 
   useEffect(() => {
-    async function handleCallback() {
-      // Supabase SDK detects the token/code in the URL hash/query and sets the session
-      const { data, error } = await supabase.auth.getSession()
+    const destination =
+      redirect_to && isSafeRedirect(redirect_to) ? redirect_to : '/dashboard/projects'
 
-      if (error || !data.session) {
-        // Failed — send back to login
-        navigate({ to: '/auth/login' })
-        return
-      }
+    // Supabase exchanges the OAuth code / magic-link token asynchronously.
+    // Listening to onAuthStateChange ensures we act only after the session
+    // is fully established, regardless of timing.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        subscription.unsubscribe()
 
-      // Guard against open-redirect: only allow same-origin or modecat.net
-      const safeDomains = ['app.modecat.net', 'modecat.net', 'localhost']
-      let destination = '/dashboard/projects'
-
-      if (redirect_to) {
-        try {
-          const url = new URL(redirect_to)
-          if (safeDomains.some((d) => url.hostname === d || url.hostname.endsWith(`.${d}`))) {
-            destination = redirect_to
-          }
-        } catch {
-          // redirect_to was a relative path, which is fine
-          destination = redirect_to
+        if (destination.startsWith('http')) {
+          // Cross-domain tracker flow — pass token back as query param
+          const url = new URL(destination)
+          url.searchParams.set('mc_token', session.access_token)
+          window.location.href = url.toString()
+        } else {
+          navigate({ to: destination as '/' })
         }
       }
 
-      // If destination is external (cross-domain tracker flow), do a full redirect
-      if (destination.startsWith('http')) {
-        const token = data.session.access_token
-        const url = new URL(destination)
-        url.searchParams.set('mc_token', token)
-        window.location.href = url.toString()
-      } else {
-        navigate({ to: destination as '/' })
+      if (event === 'INITIAL_SESSION' && !session) {
+        // No session established — something went wrong
+        subscription.unsubscribe()
+        navigate({ to: '/auth/login' })
       }
-    }
+    })
 
-    handleCallback()
+    // Safety net: if nothing fires in 8 seconds, bail to login
+    const timeout = setTimeout(() => {
+      subscription.unsubscribe()
+      navigate({ to: '/auth/login' })
+    }, 8000)
+
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(timeout)
+    }
   }, [navigate, redirect_to])
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <p className="font-mono text-sm text-gray-400">Signing you in…</p>
+    <div className="flex min-h-screen items-center justify-center bg-white">
+      <div className="text-center">
+        <span
+          className="font-vt323 text-[28px] leading-none text-[#111]"
+          style={{ fontFamily: 'var(--font-vt323)' }}
+        >
+          modecat_
+        </span>
+        <p className="mt-4 font-mono text-[11px] text-[#aaa]">Signing you in…</p>
+      </div>
     </div>
   )
 }
