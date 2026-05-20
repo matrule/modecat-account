@@ -6,7 +6,7 @@ import { useProjects, useDeleteProject } from '@/hooks/useProjects'
 import { supabase } from '@/lib/supabase'
 import type { Project } from '@/types/project'
 
-const TRACKER_URL = 'https://modecat.net'
+const TRACKER_URL = 'https://app.modecat.net'
 
 export const Route = createFileRoute('/dashboard/projects/')({
   component: ProjectsPage,
