@@ -1,0 +1,62 @@
+---
+title: Cloud Save
+description: How modecat stores, versions, and protects your project files.
+---
+
+# Cloud Save
+
+Every project you save is a single JSON file stored in Supabase Storage — the same
+infrastructure that powers the rest of your account. This page explains how it all works.
+
+## How files are stored
+
+When you hit **Save to cloud**, the tracker serialises its entire internal state as JSON
+and uploads it to a private storage bucket:
+
+```
+projects/{your-user-id}/{project-id}.json
+```
+
+The file is private by default. Only you can download it. If you make a project public,
+other users can view the project's metadata (title, BPM, tags) on your profile, but the
+raw JSON is still only accessible via a short-lived signed URL that you generate.
+
+## Project metadata
+
+Alongside the file, a row in the `projects` table records:
+
+| Field | Description |
+|---|---|
+| `title` | Display name (editable from the dashboard) |
+| `bpm` | Extracted from the project JSON on save |
+| `tags` | Optional tags you add from the dashboard |
+| `is_public` | Whether the project appears on your public profile |
+| `updated_at` | Timestamp of the last cloud save |
+| `schema_version` | Internal version number for forward-compatibility |
+
+## Overwriting vs. versioning
+
+At MVP, every save **overwrites** the previous file. There is no revision history. If you
+want to keep a snapshot, duplicate the project from the dashboard before saving a major
+change.
+
+Revision history is on the roadmap for a future release.
+
+## File size
+
+The tracker's JSON state is typically 5–50 KB, well within the 10 MB per-file limit.
+Samples are **not** embedded in project files — they are stored separately in the `samples`
+bucket and referenced by ID.
+
+## Security
+
+- Files are stored in a **private** Supabase Storage bucket.
+- Row-level security (RLS) policies on both the `projects` table and the storage bucket
+  ensure you can only read and write your own files.
+- Access tokens expire after 1 hour. The tracker requests a fresh signed URL automatically
+  when it needs to download a project.
+
+## Offline behaviour
+
+The tracker works fully offline. Cloud save is additive — you can work without an account
+and connect one later. Your in-browser state is never deleted when you sign out.
