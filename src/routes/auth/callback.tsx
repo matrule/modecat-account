@@ -28,7 +28,6 @@ function AuthCallback() {
   const navigate = useNavigate()
   const { redirect_to } = Route.useSearch()
   const [status, setStatus] = useState('Signing you in…')
-  const [debugInfo, setDebugInfo] = useState('')
 
   useEffect(() => {
     const destination =
@@ -38,10 +37,6 @@ function AuthCallback() {
       const search = new URLSearchParams(window.location.search)
       const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
 
-      // Debug: show what we actually have in the URL
-      const debugStr = `search: ${window.location.search || '(empty)'} | hash: ${window.location.hash || '(empty)'}`
-      setDebugInfo(debugStr)
-
       // ── PKCE flow: code in query string ──
       const code = search.get('code')
       if (code) {
@@ -50,7 +45,7 @@ function AuthCallback() {
           setStatus(`Error: ${error?.message ?? 'exchange failed'}`)
           return
         }
-        doRedirect(data.session.access_token, destination)
+        doRedirect(data.session.access_token, destination, data.session.refresh_token)
         return
       }
 
@@ -63,24 +58,25 @@ function AuthCallback() {
           setStatus(`Error: ${error?.message ?? 'session failed'}`)
           return
         }
-        doRedirect(data.session.access_token, destination)
+        doRedirect(data.session.access_token, destination, data.session.refresh_token)
         return
       }
 
       // ── Fallback: maybe session already exists ──
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
-        doRedirect(session.access_token, destination)
+        doRedirect(session.access_token, destination, session.refresh_token)
         return
       }
 
       setStatus(`No auth code found — nothing in URL params or hash.`)
     }
 
-    function doRedirect(accessToken: string, destination: string) {
+    function doRedirect(accessToken: string, destination: string, refreshToken?: string) {
       if (destination.startsWith('http')) {
         const url = new URL(destination)
         url.searchParams.set('mc_token', accessToken)
+        if (refreshToken) url.searchParams.set('mc_refresh', refreshToken)
         window.location.href = url.toString()
       } else {
         navigate({ to: destination as '/' })
@@ -100,9 +96,6 @@ function AuthCallback() {
           modecat_
         </span>
         <p className="mt-4 font-mono text-[11px] text-[#888]">{status}</p>
-        {debugInfo && (
-          <p className="mt-3 max-w-sm break-all font-mono text-[9px] text-[#bbb]">{debugInfo}</p>
-        )}
         {status.startsWith('No auth') || status.startsWith('Error') ? (
           <button
             onClick={() => navigate({ to: '/auth/login' })}
